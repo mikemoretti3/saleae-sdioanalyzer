@@ -80,7 +80,7 @@ static std::stringstream ParseCmd52(Frame& frame, DisplayBase display_base)
 		}
 		result << " ";
 	}
-	uint32_t func = (frame.mData1 >> CMD52_FUNC) & CMD52_FUNC_MASK;
+	uint8_t func = (frame.mData1 >> CMD52_FUNC) & CMD52_FUNC_MASK;
 	AnalyzerHelpers::GetNumberString(func, Decimal, 0, number_str1, 128);
 	result << "F:" << number_str1 << " ";
 	uint32_t reg = (frame.mData1 >> CMD52_REG_ADDR) & CMD52_REG_ADDR_MASK;
@@ -141,6 +141,54 @@ static std::stringstream ParseCmd52Resp(Frame& frame, DisplayBase display_base)
 	return result;
 }
 
+#define CMD53_BBCOUNT 0
+#define CMD53_BBCOUNT_MASK 0x1FF
+#define CMD53_REG_ADDR (9+1)
+#define CMD53_REG_ADDR_MASK 0x1FFFF
+#define CMD53_OP_CODE (CMD53_REG_ADDR+17)
+#define CMD53_OP_CODE_MASK 1
+#define CMD53_BLOCK_MODE (CMD53_OP_CODE+1)
+#define CMD53_BLOCK_MODE_MASK 1
+#define CMD53_FUNC (CMD53_BLOCK_MODE+1)
+#define CMD53_FUNC_MASK 0x7
+#define CMD53_RW_FLAG (CMD53_FUNC+3)
+#define CMD53_RW_FLAG_MASK 1
+
+static std::stringstream ParseCmd53(Frame& frame, DisplayBase display_base)
+{
+	std::stringstream result;
+	char number_str1[128];
+
+	uint8_t rw = (frame.mData1 >> CMD53_RW_FLAG) & CMD53_RW_FLAG_MASK;
+	if (!rw) {
+		result << "R ";
+	}
+	else {
+		result << "W ";
+	}
+	uint8_t func = (frame.mData1 >> CMD53_FUNC) & CMD53_FUNC_MASK;
+	AnalyzerHelpers::GetNumberString(func, Decimal, 0, number_str1, 128);
+	result << "F:" << number_str1 << " ";
+	if ((frame.mData1 >> CMD53_BLOCK_MODE) & CMD53_BLOCK_MODE_MASK) {
+		result << "BLK ";
+	}
+	if ((frame.mData1 >> CMD53_OP_CODE) & CMD53_OP_CODE_MASK) {
+		result << "IA ";
+	}
+	else {
+		result << "FA ";
+	}
+	uint32_t reg = (frame.mData1 >> CMD53_REG_ADDR) & CMD53_REG_ADDR_MASK;
+	AnalyzerHelpers::GetNumberString(reg, display_base, 0, number_str1, 128);
+	result << "REG:" << number_str1 << " ";
+	uint16_t bcount = (frame.mData1 >> CMD53_BBCOUNT) & CMD53_BBCOUNT_MASK;
+	AnalyzerHelpers::GetNumberString(bcount, Decimal, 0, number_str1, 128);
+	result << "#:" << number_str1;
+
+	//	logDbg("Result: %s\n", result.str().c_str());
+	return result;
+}
+
 void SDIOAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel, DisplayBase display_base )
 {
 	ClearResultStrings();
@@ -168,21 +216,32 @@ void SDIOAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel,
 		lastCmd = frame.mData1;
 	}
 	else if (frame.mType == SDIOAnalyzer::FRAME_ARG) {
+//		std::stringstream result0;
+//		AnalyzerHelpers::GetNumberString(frame.mData1, display_base, 32, number_str2, 128);
+//		result0 << "ARG:";// << number_str2;
+		AddResultString("A");
+		AddResultString("ARG");
+
 		std::stringstream result;
-		logDbg("LastCmd=%d\n", lastCmd);
+		//		logDbg("LastCmd=%d\n", lastCmd);
 		if (lastCmd == 52) {
-//			logDbg("Cmd 52\n");
 			// host
 			if (!lastDir) {
-//				logDbg("Host\n");
 				result = ParseCmd52(frame, display_base);
 			}
 			else {
 				result = ParseCmd52Resp(frame, display_base);
 			}
 		}
-		AnalyzerHelpers::GetNumberString( frame.mData1, display_base, 32, number_str1, 128 );
-		result << "ARG:" << number_str1;
+		if (lastCmd == 53) {
+			// host
+			if (!lastDir) {
+				result = ParseCmd53(frame, display_base);
+			}
+			else {
+				result = ParseCmd52Resp(frame, display_base);
+			}
+		}
 		AddResultString(result.str().c_str());
 	}else if (frame.mType == SDIOAnalyzer::FRAME_LONG_ARG){
 		AnalyzerHelpers::GetNumberString (frame.mData1, display_base, 64, number_str1, 128);
